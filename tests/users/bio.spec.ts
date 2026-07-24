@@ -12,10 +12,14 @@ test.describe("PATCH /api/users/by-username/{username}/bio", () => {
     });
 
     expect(res.status()).toBe(200);
-    expect((await res.json()).bio).toBe("Painter of small, strange things.");
+    const updated = await res.json();
+    expect(updated.id).toBe(authedUser.userId);
+    expect(updated.bio).toBe("Painter of small, strange things.");
 
     const profile = await authedRequest.get(`/api/users/by-username/${authedUser.username}`);
-    expect((await profile.json()).bio).toBe("Painter of small, strange things.");
+    const profileBody = await profile.json();
+    expect(profileBody.id).toBe(authedUser.userId);
+    expect(profileBody.bio).toBe("Painter of small, strange things.");
   });
 
   test("an empty string is a valid bio (clears it)", async ({ authedRequest, authedUser }) => {
@@ -23,7 +27,12 @@ test.describe("PATCH /api/users/by-username/{username}/bio", () => {
       data: { bio: "" },
     });
     expect(res.status()).toBe(200);
-    expect((await res.json()).bio).toBe("");
+    const updated = await res.json();
+    expect(updated.id).toBe(authedUser.userId);
+    expect(updated.bio).toBe("");
+
+    const profile = await authedRequest.get(`/api/users/by-username/${authedUser.username}`);
+    expect((await profile.json()).bio).toBe("");
   });
 
   test("rejects a bio over 2000 characters", async ({ authedRequest, authedUser }) => {

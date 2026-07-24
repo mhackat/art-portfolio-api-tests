@@ -15,6 +15,8 @@ test.describe("POST /api/signup", () => {
     const res = await apiRequest.post("/api/signup", { data: candidate });
     expect(res.status()).toBe(201);
     const body = await res.json();
+    expect(typeof body.id).toBe("string");
+    expect(body.id.length).toBeGreaterThan(0);
     expect(body).toMatchObject({
       username: candidate.username,
       email: candidate.email,

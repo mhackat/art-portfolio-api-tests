@@ -1,5 +1,5 @@
 import { test, expect } from "../../fixtures/api-fixtures";
-import { pngFilePart, oversizedPngFilePart, disallowedFilePart } from "../../utils/test-image";
+import { pngFilePart, pngBuffer, oversizedPngFilePart, disallowedFilePart } from "../../utils/test-image";
 import { buildMultipartFields } from "../../utils/multipart";
 
 // Uses the existing API_AUTOMATION account throughout. Each test that
@@ -7,7 +7,7 @@ import { buildMultipartFields } from "../../utils/multipart";
 // don't accumulate gallery items on the shared account.
 
 test.describe("POST /api/users/by-username/{username}/artworks", () => {
-  test("the owner can add an artwork with an uploaded image", async ({ authedRequest, authedUser }) => {
+  test("the owner can add an artwork with an uploaded image", async ({ authedRequest, apiRequest, authedUser }) => {
     const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "Untitled No. 1", description: "Oil on canvas.", file: pngFilePart() },
     });
@@ -15,8 +15,17 @@ test.describe("POST /api/users/by-username/{username}/artworks", () => {
     expect(res.status()).toBe(201);
     const artwork = await res.json();
     expect(artwork).toMatchObject({ title: "Untitled No. 1", description: "Oil on canvas.", userId: authedUser.userId });
+    expect(typeof artwork.id).toBe("string");
+    expect(artwork.id.length).toBeGreaterThan(0);
+    expect(typeof artwork.createdAt).toBe("string");
     expect(typeof artwork.imageUrl).toBe("string");
     expect(artwork.imageUrl.length).toBeGreaterThan(0);
+
+    // Fetch the uploaded image back and confirm it's actually the file we sent,
+    // not just that the route echoed back some URL-shaped string.
+    const imageRes = await apiRequest.get(artwork.imageUrl);
+    expect(imageRes.status()).toBe(200);
+    expect((await imageRes.body()).length).toBe(pngBuffer().length);
 
     await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
@@ -27,6 +36,7 @@ test.describe("POST /api/users/by-username/{username}/artworks", () => {
     });
     expect(res.status()).toBe(201);
     const artwork = await res.json();
+    expect(artwork.title).toBe("No description");
     expect(artwork.description).toBe("");
 
     await authedRequest.delete(`/api/artworks/${artwork.id}`);
@@ -95,6 +105,8 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
 
     expect(res.status()).toBe(200);
     const updated = await res.json();
+    expect(updated.id).toBe(artwork.id);
+    expect(updated.userId).toBe(artwork.userId);
     expect(updated.title).toBe("Updated title");
     expect(updated.description).toBe("Updated description.");
     expect(updated.imageUrl).toBe(artwork.imageUrl);
@@ -111,8 +123,10 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
 
     expect(res.status()).toBe(200);
     const updated = await res.json();
+    expect(updated.id).toBe(artwork.id);
     expect(updated.title).toBe("Original title");
     expect(updated.description).toBe("only description changed");
+    expect(updated.imageUrl).toBe(artwork.imageUrl);
 
     await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
@@ -129,12 +143,17 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     });
 
     expect(res.status()).toBe(200);
-    expect((await res.json()).description).toBe("");
+    const updated = await res.json();
+    expect(updated.id).toBe(artwork.id);
+    // Only description was sent — title and image should be untouched.
+    expect(updated.title).toBe("Original title");
+    expect(updated.description).toBe("");
+    expect(updated.imageUrl).toBe(artwork.imageUrl);
 
     await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("uploading a new file replaces the image", async ({ authedRequest, authedUser }) => {
+  test("uploading a new file replaces the image", async ({ authedRequest, apiRequest, authedUser }) => {
     const artwork = await createArtwork(authedRequest, authedUser.username);
 
     const res = await authedRequest.patch(`/api/artworks/${artwork.id}`, {
@@ -142,7 +161,16 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     });
 
     expect(res.status()).toBe(200);
-    expect(typeof (await res.json()).imageUrl).toBe("string");
+    const updated = await res.json();
+    // Only the file was sent — title/description should be untouched.
+    expect(updated.title).toBe("Original title");
+    expect(updated.description).toBe("Original description.");
+    expect(typeof updated.imageUrl).toBe("string");
+    expect(updated.imageUrl).not.toBe(artwork.imageUrl);
+
+    const imageRes = await apiRequest.get(updated.imageUrl);
+    expect(imageRes.status()).toBe(200);
+    expect((await imageRes.body()).length).toBe(pngBuffer().length);
 
     await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });

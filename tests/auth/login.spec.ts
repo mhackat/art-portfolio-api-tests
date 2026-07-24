@@ -7,7 +7,10 @@ import { env } from "../../config/env";
 // Each successful login here creates its own revocable session key, cleaned
 // up immediately after use so the account doesn't accumulate stray keys.
 test.describe("POST /api/auth/login", () => {
-  test("logs in with username + password, and the token authenticates a real request", async ({ apiRequest }) => {
+  test("logs in with username + password, and the token authenticates a real request", async ({
+    apiRequest,
+    authedUser,
+  }) => {
     const res = await apiRequest.post("/api/auth/login", {
       data: { identifier: env.automationUser.username, password: env.automationUser.password },
     });
@@ -15,6 +18,10 @@ test.describe("POST /api/auth/login", () => {
     expect(res.status()).toBe(201);
     const body = await res.json();
     expect(typeof body.token).toBe("string");
+    expect(body.token.length).toBeGreaterThan(0);
+    // Confirms login resolves to the same account global setup already
+    // captured, not just a plausible-looking user object.
+    expect(body.user.id).toBe(authedUser.userId);
     expect(body.user).toMatchObject({
       username: env.automationUser.username,
       displayName: env.automationUser.displayName,
@@ -29,14 +36,16 @@ test.describe("POST /api/auth/login", () => {
     await apiRequest.post("/api/auth/logout", { headers: { Authorization: `Bearer ${body.token}` } });
   });
 
-  test("logs in with email + password", async ({ apiRequest }) => {
+  test("logs in with email + password", async ({ apiRequest, authedUser }) => {
     const res = await apiRequest.post("/api/auth/login", {
       data: { identifier: env.automationUser.email, password: env.automationUser.password },
     });
     expect(res.status()).toBe(201);
-    const { token } = await res.json();
+    const body = await res.json();
+    expect(body.user.id).toBe(authedUser.userId);
+    expect(body.user.username).toBe(env.automationUser.username);
 
-    await apiRequest.post("/api/auth/logout", { headers: { Authorization: `Bearer ${token}` } });
+    await apiRequest.post("/api/auth/logout", { headers: { Authorization: `Bearer ${body.token}` } });
   });
 
   test("rejects an identifier that doesn't exist", async ({ apiRequest }) => {

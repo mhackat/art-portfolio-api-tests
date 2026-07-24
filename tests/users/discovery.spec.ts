@@ -1,4 +1,5 @@
 import { test, expect } from "../../fixtures/api-fixtures";
+import { env } from "../../config/env";
 
 test.describe("GET /api/users", () => {
   test("lists users without requiring authentication", async ({ apiRequest }) => {
@@ -28,7 +29,9 @@ test.describe("GET /api/users", () => {
     const res = await apiRequest.get("/api/users", { params: { q: "API Automation" } });
     expect(res.status()).toBe(200);
     const users = await res.json();
-    expect(users.some((u: { username: string }) => u.username === authedUser.username)).toBe(true);
+    const match = users.find((u: { username: string }) => u.username === authedUser.username);
+    expect(match).toBeDefined();
+    expect(match.displayName).toBe(env.automationUser.displayName);
   });
 
   test("returns an empty list for a query that matches nobody", async ({ apiRequest }) => {
@@ -50,7 +53,9 @@ test.describe("GET /api/users/{id} and /api/users/by-username/{username}", () =>
     const res = await apiRequest.get(`/api/users/${authedUser.userId}`);
     expect(res.status()).toBe(200);
     const body = await res.json();
+    expect(body.id).toBe(authedUser.userId);
     expect(body.username).toBe(authedUser.username);
+    expect(body.displayName).toBe(env.automationUser.displayName);
     expect(Array.isArray(body.artworks)).toBe(true);
     expect(body).not.toHaveProperty("passwordHash");
   });
@@ -60,6 +65,8 @@ test.describe("GET /api/users/{id} and /api/users/by-username/{username}", () =>
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body.id).toBe(authedUser.userId);
+    expect(body.username).toBe(authedUser.username);
+    expect(body.displayName).toBe(env.automationUser.displayName);
   });
 
   test("404s for an id that doesn't exist", async ({ apiRequest }) => {

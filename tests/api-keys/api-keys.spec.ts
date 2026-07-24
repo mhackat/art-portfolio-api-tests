@@ -6,20 +6,29 @@ test.describe("API key management", () => {
     expect(res.status()).toBe(401);
   });
 
-  test("the authenticated user can list their own keys, prefix only — never the raw key", async ({
-    authedRequest,
-  }) => {
+  test("newly created keys appear in the list with the name that was passed in", async ({ authedRequest }) => {
+    const created = await authedRequest.post("/api/api-keys", { data: { name: "list-visibility test key" } });
+    const { id, key, keyPrefix } = await created.json();
+    expect(keyPrefix).toBe(key.slice(0, 10));
+
     const res = await authedRequest.get("/api/api-keys");
     expect(res.status()).toBe(200);
 
     const keys = await res.json();
     expect(Array.isArray(keys)).toBe(true);
-    expect(keys.length).toBeGreaterThan(0);
-    for (const key of keys) {
-      expect(key).toHaveProperty("keyPrefix");
-      expect(key).not.toHaveProperty("key");
-      expect(key).not.toHaveProperty("keyHash");
+
+    const match = keys.find((k: { id: string }) => k.id === id);
+    expect(match).toBeDefined();
+    expect(match.name).toBe("list-visibility test key");
+    expect(match.keyPrefix).toBe(keyPrefix);
+
+    for (const k of keys) {
+      expect(k).toHaveProperty("keyPrefix");
+      expect(k).not.toHaveProperty("key");
+      expect(k).not.toHaveProperty("keyHash");
     }
+
+    await authedRequest.delete(`/api/api-keys/${id}`);
   });
 
   test("POST /api/api-keys creates a key and returns the raw value once", async ({ authedRequest }) => {
@@ -27,15 +36,21 @@ test.describe("API key management", () => {
     expect(res.status()).toBe(201);
 
     const body = await res.json();
+    expect(typeof body.id).toBe("string");
+    expect(body.id.length).toBeGreaterThan(0);
     expect(body.name).toBe("CI test key");
     expect(typeof body.key).toBe("string");
     expect(body.key.length).toBeGreaterThan(0);
+    // keyPrefix is derived from the raw key (see src/lib/api-keys.ts) — confirm
+    // the response's two fields actually agree with each other.
+    expect(body.keyPrefix).toBe(body.key.slice(0, 10));
+    expect(typeof body.createdAt).toBe("string");
 
     // Clean up so we don't accumulate keys across repeated local runs.
     await authedRequest.delete(`/api/api-keys/${body.id}`);
   });
 
-  test("a newly created key authenticates a real request", async ({ authedRequest }) => {
+  test("a newly created key authenticates as the same account that created it", async ({ authedRequest }) => {
     const createRes = await authedRequest.post("/api/api-keys", { data: { name: "usable key" } });
     const { id, key } = await createRes.json();
 
@@ -43,6 +58,10 @@ test.describe("API key management", () => {
       headers: { Authorization: `Bearer ${key}` },
     });
     expect(res.status()).toBe(200);
+    const keys = await res.json();
+    // Proves the new key authenticates as the account that created it, not
+    // some other identity — the key should see itself in its own key list.
+    expect(keys.some((k: { id: string }) => k.id === id)).toBe(true);
 
     await authedRequest.delete(`/api/api-keys/${id}`);
   });
@@ -52,13 +71,16 @@ test.describe("API key management", () => {
     expect(res.status()).toBe(201);
     const body = await res.json();
     expect(body.name).toBe("Default");
+    expect(body.keyPrefix).toBe(body.key.slice(0, 10));
 
     await authedRequest.delete(`/api/api-keys/${body.id}`);
   });
 
   test("DELETE revokes a key so it can no longer authenticate", async ({ authedRequest }) => {
     const createRes = await authedRequest.post("/api/api-keys", { data: { name: "to be revoked" } });
-    const { id, key } = await createRes.json();
+    const created = await createRes.json();
+    expect(created.name).toBe("to be revoked");
+    const { id, key } = created;
 
     const deleteRes = await authedRequest.delete(`/api/api-keys/${id}`);
     expect(deleteRes.status()).toBe(204);
