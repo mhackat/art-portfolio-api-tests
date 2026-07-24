@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
+    "test:ci": "playwright test --grep-invert @admin --reporter=list,html",
     "test:ui": "playwright test --ui",
     "report": "playwright show-report"
   },

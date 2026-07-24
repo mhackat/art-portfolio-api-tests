@@ -14,7 +14,7 @@ import { createTestUser } from "../../utils/create-user";
 // every other test that depends on it existing. This whole describe block
 // only runs when explicitly configured, so it doesn't affect the signup
 // rate limit in normal local/CI runs.
-test.describe("Admin endpoints", () => {
+test.describe("Admin endpoints @admin", () => {
   test.skip(!env.admin.isConfigured, "ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin tests");
 
   async function loginAsAdmin(apiRequest: import("@playwright/test").APIRequestContext) {
