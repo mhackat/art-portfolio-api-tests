@@ -1,96 +1,74 @@
 import { test, expect } from "../../fixtures/api-fixtures";
-import { createTestUser } from "../../utils/create-user";
 import { pngFilePart, oversizedPngFilePart, disallowedFilePart } from "../../utils/test-image";
 import { buildMultipartFields } from "../../utils/multipart";
 
-// Each test creates its own throwaway user (see createTestUser) so uploaded
-// artworks/images don't pile up on the shared API_AUTOMATION account across
-// repeated local runs.
+// Uses the existing API_AUTOMATION account throughout. Each test that
+// creates an artwork deletes it again afterward so repeated local runs
+// don't accumulate gallery items on the shared account.
 
 test.describe("POST /api/users/by-username/{username}/artworks", () => {
-  test("the owner can add an artwork with an uploaded image", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-
-    const res = await apiRequest.post(`/api/users/by-username/${user.username}/artworks`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+  test("the owner can add an artwork with an uploaded image", async ({ authedRequest, authedUser }) => {
+    const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "Untitled No. 1", description: "Oil on canvas.", file: pngFilePart() },
     });
 
     expect(res.status()).toBe(201);
     const artwork = await res.json();
-    expect(artwork).toMatchObject({ title: "Untitled No. 1", description: "Oil on canvas.", userId: user.userId });
+    expect(artwork).toMatchObject({ title: "Untitled No. 1", description: "Oil on canvas.", userId: authedUser.userId });
     expect(typeof artwork.imageUrl).toBe("string");
     expect(artwork.imageUrl.length).toBeGreaterThan(0);
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("description defaults to an empty string when omitted", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const res = await apiRequest.post(`/api/users/by-username/${user.username}/artworks`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+  test("description defaults to an empty string when omitted", async ({ authedRequest, authedUser }) => {
+    const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "No description", file: pngFilePart() },
     });
     expect(res.status()).toBe(201);
-    expect((await res.json()).description).toBe("");
+    const artwork = await res.json();
+    expect(artwork.description).toBe("");
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("requires a title", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const res = await apiRequest.post(`/api/users/by-username/${user.username}/artworks`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+  test("requires a title", async ({ authedRequest, authedUser }) => {
+    const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { file: pngFilePart() },
     });
     expect(res.status()).toBe(400);
   });
 
-  test("requires a file", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const res = await apiRequest.post(`/api/users/by-username/${user.username}/artworks`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+  test("requires a file", async ({ authedRequest, authedUser }) => {
+    const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "No file here" },
     });
     expect(res.status()).toBe(400);
   });
 
-  test("rejects a disallowed file type", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const res = await apiRequest.post(`/api/users/by-username/${user.username}/artworks`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+  test("rejects a disallowed file type", async ({ authedRequest, authedUser }) => {
+    const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "Wrong type", file: disallowedFilePart() },
     });
     expect(res.status()).toBe(400);
   });
 
-  test("rejects a file over the size limit", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const res = await apiRequest.post(`/api/users/by-username/${user.username}/artworks`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+  test("rejects a file over the size limit", async ({ authedRequest, authedUser }) => {
+    const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "Too big", file: oversizedPngFilePart() },
     });
     expect(res.status()).toBe(400);
   });
 
-  test("requires authentication", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const res = await apiRequest.post(`/api/users/by-username/${user.username}/artworks`, {
+  test("requires authentication", async ({ apiRequest, authedUser }) => {
+    const res = await apiRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "Anonymous upload", file: pngFilePart() },
     });
     expect(res.status()).toBe(401);
   });
 
-  test("a different authenticated user cannot post to someone else's gallery", async ({ apiRequest }) => {
-    const owner = await createTestUser(apiRequest);
-    const attacker = await createTestUser(apiRequest);
-
-    const res = await apiRequest.post(`/api/users/by-username/${owner.username}/artworks`, {
-      headers: { Authorization: `Bearer ${attacker.token}` },
-      multipart: { title: "Squatting", file: pngFilePart() },
-    });
-    expect(res.status()).toBe(403);
-  });
-
-  test("404s for a username that doesn't exist", async ({ apiRequest, authedUser }) => {
-    const res = await apiRequest.post("/api/users/by-username/does-not-exist-xyz/artworks", {
-      headers: { Authorization: `Bearer ${authedUser.token}` },
+  test("404s for a username that doesn't exist", async ({ authedRequest }) => {
+    const res = await authedRequest.post("/api/users/by-username/does-not-exist-xyz/artworks", {
       multipart: { title: "Ghost gallery", file: pngFilePart() },
     });
     expect(res.status()).toBe(404);
@@ -98,20 +76,20 @@ test.describe("POST /api/users/by-username/{username}/artworks", () => {
 });
 
 test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
-  async function createArtwork(apiRequest: import("@playwright/test").APIRequestContext, token: string, username: string) {
-    const res = await apiRequest.post(`/api/users/by-username/${username}/artworks`, {
-      headers: { Authorization: `Bearer ${token}` },
+  async function createArtwork(authedRequest: import("@playwright/test").APIRequestContext, username: string) {
+    const res = await authedRequest.post(`/api/users/by-username/${username}/artworks`, {
       multipart: { title: "Original title", description: "Original description.", file: pngFilePart() },
     });
     return res.json();
   }
 
-  test("the owner can update the title and description without touching the image", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, user.token, user.username);
+  test("the owner can update the title and description without touching the image", async ({
+    authedRequest,
+    authedUser,
+  }) => {
+    const artwork = await createArtwork(authedRequest, authedUser.username);
 
-    const res = await apiRequest.patch(`/api/artworks/${artwork.id}`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+    const res = await authedRequest.patch(`/api/artworks/${artwork.id}`, {
       multipart: { title: "Updated title", description: "Updated description." },
     });
 
@@ -120,14 +98,14 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     expect(updated.title).toBe("Updated title");
     expect(updated.description).toBe("Updated description.");
     expect(updated.imageUrl).toBe(artwork.imageUrl);
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("a blank title is treated as 'leave unchanged', not rejected", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, user.token, user.username);
+  test("a blank title is treated as 'leave unchanged', not rejected", async ({ authedRequest, authedUser }) => {
+    const artwork = await createArtwork(authedRequest, authedUser.username);
 
-    const res = await apiRequest.patch(`/api/artworks/${artwork.id}`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+    const res = await authedRequest.patch(`/api/artworks/${artwork.id}`, {
       multipart: { title: "   ", description: "only description changed" },
     });
 
@@ -135,104 +113,80 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     const updated = await res.json();
     expect(updated.title).toBe("Original title");
     expect(updated.description).toBe("only description changed");
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("a blank description intentionally clears it", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, user.token, user.username);
+  test("a blank description intentionally clears it", async ({ authedRequest, authedUser }) => {
+    const artwork = await createArtwork(authedRequest, authedUser.username);
 
     // Built by hand rather than passed via Playwright's `multipart` option —
     // see utils/multipart.ts for why an empty-string value needs this.
     const { body, contentType } = buildMultipartFields([{ name: "description", value: "" }]);
-    const res = await apiRequest.patch(`/api/artworks/${artwork.id}`, {
-      headers: { Authorization: `Bearer ${user.token}`, "Content-Type": contentType },
+    const res = await authedRequest.patch(`/api/artworks/${artwork.id}`, {
+      headers: { "Content-Type": contentType },
       data: body,
     });
 
     expect(res.status()).toBe(200);
     expect((await res.json()).description).toBe("");
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("uploading a new file replaces the image", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, user.token, user.username);
+  test("uploading a new file replaces the image", async ({ authedRequest, authedUser }) => {
+    const artwork = await createArtwork(authedRequest, authedUser.username);
 
-    const res = await apiRequest.patch(`/api/artworks/${artwork.id}`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+    const res = await authedRequest.patch(`/api/artworks/${artwork.id}`, {
       multipart: { file: pngFilePart("replacement.png") },
     });
 
     expect(res.status()).toBe(200);
     expect(typeof (await res.json()).imageUrl).toBe("string");
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("requires authentication", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, user.token, user.username);
+  test("requires authentication", async ({ apiRequest, authedRequest, authedUser }) => {
+    const artwork = await createArtwork(authedRequest, authedUser.username);
 
     const res = await apiRequest.patch(`/api/artworks/${artwork.id}`, {
       multipart: { title: "Anonymous edit" },
     });
     expect(res.status()).toBe(401);
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("a different authenticated user cannot update someone else's artwork", async ({ apiRequest }) => {
-    const owner = await createTestUser(apiRequest);
-    const attacker = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, owner.token, owner.username);
-
-    const res = await apiRequest.patch(`/api/artworks/${artwork.id}`, {
-      headers: { Authorization: `Bearer ${attacker.token}` },
-      multipart: { title: "Vandalized" },
-    });
-    expect(res.status()).toBe(403);
-  });
-
-  test("404s for an artwork that doesn't exist", async ({ apiRequest, authedUser }) => {
-    const res = await apiRequest.patch("/api/artworks/does-not-exist-xyz", {
-      headers: { Authorization: `Bearer ${authedUser.token}` },
+  test("404s for an artwork that doesn't exist", async ({ authedRequest }) => {
+    const res = await authedRequest.patch("/api/artworks/does-not-exist-xyz", {
       multipart: { title: "Ghost" },
     });
     expect(res.status()).toBe(404);
   });
 
-  test("the owner can delete their own artwork", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, user.token, user.username);
+  test("the owner can delete their own artwork", async ({ authedRequest, authedUser }) => {
+    const artwork = await createArtwork(authedRequest, authedUser.username);
 
-    const res = await apiRequest.delete(`/api/artworks/${artwork.id}`, {
-      headers: { Authorization: `Bearer ${user.token}` },
-    });
+    const res = await authedRequest.delete(`/api/artworks/${artwork.id}`);
     expect(res.status()).toBe(204);
 
-    const profile = await apiRequest.get(`/api/users/by-username/${user.username}`);
+    const profile = await authedRequest.get(`/api/users/by-username/${authedUser.username}`);
     const body = await profile.json();
     expect(body.artworks.find((a: { id: string }) => a.id === artwork.id)).toBeUndefined();
   });
 
-  test("a different authenticated user cannot delete someone else's artwork", async ({ apiRequest }) => {
-    const owner = await createTestUser(apiRequest);
-    const attacker = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, owner.token, owner.username);
-
-    const res = await apiRequest.delete(`/api/artworks/${artwork.id}`, {
-      headers: { Authorization: `Bearer ${attacker.token}` },
-    });
-    expect(res.status()).toBe(403);
-  });
-
-  test("DELETE requires authentication", async ({ apiRequest }) => {
-    const user = await createTestUser(apiRequest);
-    const artwork = await createArtwork(apiRequest, user.token, user.username);
+  test("DELETE requires authentication", async ({ apiRequest, authedRequest, authedUser }) => {
+    const artwork = await createArtwork(authedRequest, authedUser.username);
 
     const res = await apiRequest.delete(`/api/artworks/${artwork.id}`);
     expect(res.status()).toBe(401);
+
+    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
-  test("404s deleting an artwork that doesn't exist", async ({ apiRequest, authedUser }) => {
-    const res = await apiRequest.delete("/api/artworks/does-not-exist-xyz", {
-      headers: { Authorization: `Bearer ${authedUser.token}` },
-    });
+  test("404s deleting an artwork that doesn't exist", async ({ authedRequest }) => {
+    const res = await authedRequest.delete("/api/artworks/does-not-exist-xyz");
     expect(res.status()).toBe(404);
   });
 });

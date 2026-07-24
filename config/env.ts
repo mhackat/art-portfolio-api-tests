@@ -35,13 +35,4 @@ export const env = {
       return Boolean(process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD);
     },
   },
-
-  // Optional. When set, sent as the `X-RateLimit-Bypass` header on most test
-  // traffic so a full suite run doesn't trip the app's per-IP signup/login
-  // abuse limits (a handful of attempts per 15 minutes — fine for real users,
-  // far too strict for a suite that creates many accounts per run). Must
-  // match RATE_LIMIT_BYPASS_TOKEN on the target app, and that var must never
-  // be set on a Production/Preview deployment. If unset here, tests just run
-  // unbypassed and may hit real rate limits on a fresh environment.
-  rateLimitBypassToken: process.env.RATE_LIMIT_BYPASS_TOKEN,
 };

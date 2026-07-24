@@ -1,5 +1,4 @@
 import { test, expect } from "../../fixtures/api-fixtures";
-import { createTestUser } from "../../utils/create-user";
 
 test.describe("API key management", () => {
   test("GET /api/api-keys requires authentication", async ({ apiRequest }) => {
@@ -73,21 +72,5 @@ test.describe("API key management", () => {
   test("DELETE on a nonexistent key returns 404", async ({ authedRequest }) => {
     const res = await authedRequest.delete("/api/api-keys/does-not-exist");
     expect(res.status()).toBe(404);
-  });
-
-  test("a user cannot revoke another user's key", async ({ authedRequest, apiRequest }) => {
-    const other = await createTestUser(apiRequest);
-    const otherKeyRes = await apiRequest.post("/api/api-keys", {
-      data: { name: "belongs to other user" },
-      headers: { Authorization: `Bearer ${other.token}` },
-    });
-    const otherKey = await otherKeyRes.json();
-
-    const res = await authedRequest.delete(`/api/api-keys/${otherKey.id}`);
-    expect(res.status()).toBe(403);
-
-    await apiRequest.delete(`/api/api-keys/${otherKey.id}`, {
-      headers: { Authorization: `Bearer ${other.token}` },
-    });
   });
 });

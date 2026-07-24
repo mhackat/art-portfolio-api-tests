@@ -11,10 +11,7 @@ import { saveAuth } from "../../utils/auth-storage";
  * keeps things fast and avoids tripping the login rate limit.
  */
 setup("authenticate as API_AUTOMATION", async () => {
-  const api = await request.newContext({
-    baseURL: env.baseURL,
-    extraHTTPHeaders: env.rateLimitBypassToken ? { "X-RateLimit-Bypass": env.rateLimitBypassToken } : {},
-  });
+  const api = await request.newContext({ baseURL: env.baseURL });
 
   const signupRes = await api.post("/api/signup", {
     data: {

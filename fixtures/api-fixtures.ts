@@ -16,13 +16,9 @@ type ApiFixtures = {
   authedUser: StoredAuth;
 };
 
-const bypassHeaders: Record<string, string> = env.rateLimitBypassToken
-  ? { "X-RateLimit-Bypass": env.rateLimitBypassToken }
-  : {};
-
 export const test = base.extend<ApiFixtures>({
   apiRequest: async ({ playwright }, use) => {
-    const context = await playwright.request.newContext({ baseURL: env.baseURL, extraHTTPHeaders: bypassHeaders });
+    const context = await playwright.request.newContext({ baseURL: env.baseURL });
     await use(context);
     await context.dispose();
   },
@@ -34,7 +30,7 @@ export const test = base.extend<ApiFixtures>({
   authedRequest: async ({ playwright, authedUser }, use) => {
     const context = await playwright.request.newContext({
       baseURL: env.baseURL,
-      extraHTTPHeaders: { ...bypassHeaders, Authorization: `Bearer ${authedUser.token}` },
+      extraHTTPHeaders: { Authorization: `Bearer ${authedUser.token}` },
     });
     await use(context);
     await context.dispose();

@@ -7,6 +7,13 @@ import { createTestUser } from "../../utils/create-user";
 // run when ADMIN_EMAIL/ADMIN_PASSWORD are supplied for an account that's
 // already an admin on the target environment; otherwise they're skipped
 // rather than failing, since "no admin configured" isn't a bug.
+//
+// createTestUser is used exactly once below ("an admin can delete another
+// user's account") because that test needs a real, disposable account to
+// delete — it can't reuse the shared API_AUTOMATION user without breaking
+// every other test that depends on it existing. This whole describe block
+// only runs when explicitly configured, so it doesn't affect the signup
+// rate limit in normal local/CI runs.
 test.describe("Admin endpoints", () => {
   test.skip(!env.admin.isConfigured, "ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin tests");
 
@@ -23,9 +30,11 @@ test.describe("Admin endpoints", () => {
     expect(res.status()).toBe(403);
   });
 
-  test("a non-admin cannot delete a user", async ({ authedRequest, apiRequest }) => {
-    const victim = await createTestUser(apiRequest);
-    const res = await authedRequest.delete(`/api/admin/users/${victim.userId}`);
+  test("a non-admin cannot delete a user", async ({ authedRequest, authedUser }) => {
+    // Targets the caller's own id — the request is rejected on the
+    // authorization check before any deletion would happen, so this is
+    // safe to run against the shared account.
+    const res = await authedRequest.delete(`/api/admin/users/${authedUser.userId}`);
     expect(res.status()).toBe(403);
   });
 
