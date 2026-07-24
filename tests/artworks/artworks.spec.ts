@@ -67,7 +67,11 @@ test.describe("POST /api/users/by-username/{username}/artworks", () => {
     const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
       multipart: { title: "Too big", file: oversizedPngFilePart() },
     });
-    expect(res.status()).toBe(400);
+    // Locally the app's own validateImageFile check returns 400. On Vercel,
+    // the platform's own request body size limit for Serverless Functions
+    // rejects the oversized payload first with 413, before our route code
+    // ever runs — both mean "the oversized file was rejected."
+    expect([400, 413]).toContain(res.status());
   });
 
   test("requires authentication", async ({ apiRequest, authedUser }) => {
