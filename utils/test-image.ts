@@ -1,11 +1,17 @@
-// Smallest possible valid 1x1 PNG, inlined so tests don't depend on fixture
-// files on disk. Good enough for upload/validation tests — nobody inspects
-// pixels here, just content-type/size handling.
-const ONE_BY_ONE_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEST_IMAGE_PATH = join(__dirname, "resized_testcat.png");
+
+let cachedPngBuffer: Buffer | undefined;
 
 export function pngBuffer(): Buffer {
-  return Buffer.from(ONE_BY_ONE_PNG_BASE64, "base64");
+  if (!cachedPngBuffer) {
+    cachedPngBuffer = readFileSync(TEST_IMAGE_PATH);
+  }
+  return cachedPngBuffer;
 }
 
 export function pngFilePart(name = "artwork.png") {
