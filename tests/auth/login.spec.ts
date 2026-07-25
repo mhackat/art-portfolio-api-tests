@@ -2,10 +2,10 @@ import { test, expect } from "../../fixtures/api-fixtures";
 import { env } from "../../config/env";
 
 // Uses the existing API_AUTOMATION account rather than signing up new users
-// per test — signup and login are both rate-limited per IP, and the account
-// already exists (created once by global setup / tests/auth/signup.spec.ts).
-// Each successful login here creates its own revocable session key, cleaned
-// up immediately after use so the account doesn't accumulate stray keys.
+// per test — the suite never creates accounts, this one must already exist
+// on the target environment (see tests/setup/global.setup.ts). Each
+// successful login here creates its own API key; those are left in place
+// (not logged out/revoked) so they're visible afterward for inspection.
 test.describe("POST /api/auth/login", () => {
   test("logs in with username + password, and the token authenticates a real request", async ({
     apiRequest,
@@ -32,8 +32,6 @@ test.describe("POST /api/auth/login", () => {
       headers: { Authorization: `Bearer ${body.token}` },
     });
     expect(meRes.status()).toBe(200);
-
-    await apiRequest.post("/api/auth/logout", { headers: { Authorization: `Bearer ${body.token}` } });
   });
 
   test("logs in with email + password", async ({ apiRequest, authedUser }) => {
@@ -44,8 +42,6 @@ test.describe("POST /api/auth/login", () => {
     const body = await res.json();
     expect(body.user.id).toBe(authedUser.userId);
     expect(body.user.username).toBe(env.automationUser.username);
-
-    await apiRequest.post("/api/auth/logout", { headers: { Authorization: `Bearer ${body.token}` } });
   });
 
   test("rejects an identifier that doesn't exist", async ({ apiRequest }) => {

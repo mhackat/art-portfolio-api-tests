@@ -1,6 +1,5 @@
 import { test, expect } from "../../fixtures/api-fixtures";
 import { env } from "../../config/env";
-import { createTestUser } from "../../utils/create-user";
 
 // Admin access is gated by the ADMIN_EMAILS env var on the app, not a DB
 // role — there's no way to grant it via the API itself. These tests only
@@ -8,12 +7,11 @@ import { createTestUser } from "../../utils/create-user";
 // already an admin on the target environment; otherwise they're skipped
 // rather than failing, since "no admin configured" isn't a bug.
 //
-// createTestUser is used exactly once below ("an admin can delete another
-// user's account") because that test needs a real, disposable account to
-// delete — it can't reuse the shared API_AUTOMATION user without breaking
-// every other test that depends on it existing. This whole describe block
-// only runs when explicitly configured, so it doesn't affect the signup
-// rate limit in normal local/CI runs.
+// There's no "an admin can delete another user's account" test here — it
+// would need a disposable account to delete, and the suite deliberately
+// never creates new accounts (see README). Deletion is only exercised
+// negatively (self-delete blocked, nonexistent-user 404, non-admin
+// forbidden) — nothing proves a successful delete against a real target.
 test.describe("Admin endpoints @admin", () => {
   test.skip(!env.admin.isConfigured, "ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin tests");
 
@@ -50,19 +48,6 @@ test.describe("Admin endpoints @admin", () => {
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.users ?? body)).toBe(true);
-  });
-
-  test("an admin can delete another user's account", async ({ apiRequest }) => {
-    const { token } = await loginAsAdmin(apiRequest);
-    const victim = await createTestUser(apiRequest);
-
-    const res = await apiRequest.delete(`/api/admin/users/${victim.userId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.status()).toBe(204);
-
-    const profile = await apiRequest.get(`/api/users/${victim.userId}`);
-    expect(profile.status()).toBe(404);
   });
 
   test("an admin cannot delete their own account through this endpoint", async ({ apiRequest }) => {

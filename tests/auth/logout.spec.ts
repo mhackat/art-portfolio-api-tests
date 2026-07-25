@@ -23,7 +23,7 @@ test.describe("POST /api/auth/logout", () => {
     const first = await authedRequest.post("/api/api-keys", { data: { name: "logout test key A" } });
     const { key: firstKey } = await first.json();
     const second = await authedRequest.post("/api/api-keys", { data: { name: "logout test key B" } });
-    const { id: secondId, key: secondKey } = await second.json();
+    const { key: secondKey } = await second.json();
 
     const logoutRes = await apiRequest.post("/api/auth/logout", {
       headers: { Authorization: `Bearer ${firstKey}` },
@@ -34,8 +34,6 @@ test.describe("POST /api/auth/logout", () => {
       headers: { Authorization: `Bearer ${secondKey}` },
     });
     expect(secondStillWorks.status()).toBe(200);
-
-    await authedRequest.delete(`/api/api-keys/${secondId}`);
   });
 
   test("rejects a request with no Authorization header", async ({ apiRequest }) => {

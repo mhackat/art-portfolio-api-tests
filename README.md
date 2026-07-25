@@ -33,26 +33,26 @@ npm run report   # open the last HTML report
 ```
 config/env.ts              typed env var access
 fixtures/api-fixtures.ts   apiRequest / authedRequest / authedUser fixtures
-utils/                     unique test data, multipart helpers, auth file I/O
+utils/                     test image fixture, multipart helpers, auth file I/O
 tests/setup/                global setup (login) and teardown (logout), run once per suite
-tests/auth/                 signup (one test only — see below), login, logout
+tests/auth/                 login, logout
 tests/api-keys/             API key create/list/revoke
 tests/users/                bio, public discovery (search/list/get)
 tests/artworks/             artwork upload/update/delete
 tests/admin/                admin-only endpoints, tagged @admin (skipped unless ADMIN_EMAIL/PASSWORD set)
 ```
 
-## Design: one existing user, one login, shared everywhere
+## Design: one existing user, one login, shared everywhere, nothing cleaned up
 
-The suite is built around a single existing account (`API_AUTOMATION`), not a fresh account per test. Almost every test authenticates as that one account rather than signing up or logging in itself:
+The suite runs entirely as a single pre-existing account (`API_AUTOMATION`) — it never signs anyone up. That account must already exist on whatever environment `API_BASE_URL` points at; the suite will not create it for you.
 
-- **`tests/setup/global.setup.ts`** runs once before everything else (wired via Playwright's `projects` in `playwright.config.ts`, using `dependencies`). It logs in as `API_AUTOMATION` (creating the account first if this is the very first run ever — see `tests/auth/signup.spec.ts`) and writes the bearer token to a gitignored file (`.auth/api-automation.json`).
+- **`tests/setup/global.setup.ts`** runs once before everything else (wired via Playwright's `projects` in `playwright.config.ts`, using `dependencies`). It logs in as `API_AUTOMATION` and writes the bearer token to a gitignored file (`.auth/api-automation.json`). If login fails here, that's the fix: go create the account first — the failure message says as much.
 - Every other test reads that token through the `authedRequest` / `authedUser` fixtures (`fixtures/api-fixtures.ts`) — one login for the whole run, not one per test.
-- **`tests/setup/global.teardown.ts`** runs once after everything else (`teardown: 'teardown'` in the project config) and logs out with that same token via `POST /api/auth/logout`, ending the captured authorization.
+- **`tests/setup/global.teardown.ts`** runs once after everything else (`teardown: 'teardown'` in the project config) and logs out with that same token via `POST /api/auth/logout`, ending the captured authorization. This only revokes that one session token — it doesn't touch the account, its bio, or anything it created.
 
-**`tests/auth/signup.spec.ts` is the only test that exercises the signup flow.** It creates one throwaway account (via `utils/test-data.ts#generateUniqueUser`) to prove the endpoint works and rejects a duplicate, then never touches signup again. No other test creates a new account — the app's signup/login endpoints are rate-limited per IP for real-world abuse prevention, and a suite that spun up a fresh account per test would trip that immediately. `tests/auth/logout.spec.ts` mints its disposable tokens via `POST /api/api-keys` instead of logging in again, for the same reason.
+**No test creates a new account, and nothing the suite creates (artworks, API keys, bio edits) is deleted or reset afterward.** Everything a test writes is left in place on `API_AUTOMATION` so you can go look at it once the run finishes — the dashboard, `/api/api-keys`, the account's public profile, etc. Deletion is only ever exercised where deleting is literally what's being tested (e.g. "the owner can delete their own artwork", "DELETE revokes a key so it can no longer authenticate") — those still delete, because that's the assertion, not incidental tidying.
 
-**Trade-off:** tests that would normally prove "user A can't touch user B's resources" (editing someone else's bio, deleting someone else's artwork, revoking someone else's API key) aren't covered, since that needs a second real account and the suite deliberately avoids creating extra ones. The one unavoidable exception is `tests/admin/admin.spec.ts`'s "an admin can delete another user's account" test, which needs a disposable victim account to delete — that describe block only runs at all when `ADMIN_EMAIL`/`ADMIN_PASSWORD` are explicitly configured, so it doesn't affect normal runs.
+**Trade-off:** tests that would normally prove "user A can't touch user B's resources" (editing someone else's bio, deleting someone else's artwork or API key) aren't covered, since that needs a second real account and the suite never creates one. The same applies to `tests/admin/admin.spec.ts`, which has no "an admin can successfully delete another user" test for the same reason — deletion there is only exercised negatively (self-delete blocked, nonexistent-user 404, non-admin forbidden).
 
 ## CI: gating art-portfolio-app's deploys to prod
 
@@ -72,4 +72,4 @@ README for the exact secrets required.
 
 - `utils/multipart.ts` exists because Playwright's `multipart` request option silently drops empty-string field values — confirmed against the app with a raw `curl -F "field="`, which the app handles correctly. Used only where a test needs to send a genuinely empty field (e.g. "blank description clears it").
 - `tests/users/bio.spec.ts` runs its tests serially (`test.describe.configure({ mode: "serial" })`) since they all mutate the same shared account's bio field — parallel runs would race a write in one test against a read-after-write assertion in another.
-- Artwork and API-key tests clean up what they create (delete the artwork/key at the end) so repeated local runs don't accumulate data on the shared account.
+- Artwork and API-key tests do **not** clean up what they create — repeated runs accumulate artworks/keys on the shared `API_AUTOMATION` account by design, so you can inspect what a run actually did afterward. Expect the account's gallery and key list to grow over time; prune it manually if that becomes a problem.

@@ -1,20 +1,31 @@
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { test, expect } from "../../fixtures/api-fixtures";
 import { pngFilePart, pngBuffer, oversizedPngFilePart, disallowedFilePart } from "../../utils/test-image";
 import { buildMultipartFields } from "../../utils/multipart";
 
-// Uses the existing API_AUTOMATION account throughout. Each test that
-// creates an artwork deletes it again afterward so repeated local runs
-// don't accumulate gallery items on the shared account.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const uploadedArtworkImage = {
+  name: "resized_testcat.png",
+  mimeType: "image/png",
+  buffer: readFileSync(join(__dirname, "resized_testcat.png")),
+};
+
+// Uses the existing API_AUTOMATION account throughout. Artworks created here
+// are deliberately left in place (not deleted afterward) so they're visible
+// on the account for inspection once the run finishes — the exception is
+// the tests whose actual subject is the DELETE endpoint itself.
 
 test.describe("POST /api/users/by-username/{username}/artworks", () => {
   test("the owner can add an artwork with an uploaded image", async ({ authedRequest, apiRequest, authedUser }) => {
     const res = await authedRequest.post(`/api/users/by-username/${authedUser.username}/artworks`, {
-      multipart: { title: "Untitled No. 1", description: "Oil on canvas.", file: pngFilePart() },
+      multipart: { title: "Untitled No. 1 test cat", description: "Oil on canvas.", file: uploadedArtworkImage },
     });
 
     expect(res.status()).toBe(201);
     const artwork = await res.json();
-    expect(artwork).toMatchObject({ title: "Untitled No. 1", description: "Oil on canvas.", userId: authedUser.userId });
+    expect(artwork).toMatchObject({ title: "Untitled No. 1 test cat", description: "Oil on canvas.", userId: authedUser.userId });
     expect(typeof artwork.id).toBe("string");
     expect(artwork.id.length).toBeGreaterThan(0);
     expect(typeof artwork.createdAt).toBe("string");
@@ -26,8 +37,6 @@ test.describe("POST /api/users/by-username/{username}/artworks", () => {
     const imageRes = await apiRequest.get(artwork.imageUrl);
     expect(imageRes.status()).toBe(200);
     expect((await imageRes.body()).length).toBe(pngBuffer().length);
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("description defaults to an empty string when omitted", async ({ authedRequest, authedUser }) => {
@@ -38,8 +47,6 @@ test.describe("POST /api/users/by-username/{username}/artworks", () => {
     const artwork = await res.json();
     expect(artwork.title).toBe("No description");
     expect(artwork.description).toBe("");
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("requires a title", async ({ authedRequest, authedUser }) => {
@@ -114,8 +121,6 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     expect(updated.title).toBe("Updated title");
     expect(updated.description).toBe("Updated description.");
     expect(updated.imageUrl).toBe(artwork.imageUrl);
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("a blank title is treated as 'leave unchanged', not rejected", async ({ authedRequest, authedUser }) => {
@@ -131,8 +136,6 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     expect(updated.title).toBe("Original title");
     expect(updated.description).toBe("only description changed");
     expect(updated.imageUrl).toBe(artwork.imageUrl);
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("a blank description intentionally clears it", async ({ authedRequest, authedUser }) => {
@@ -153,8 +156,6 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     expect(updated.title).toBe("Original title");
     expect(updated.description).toBe("");
     expect(updated.imageUrl).toBe(artwork.imageUrl);
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("uploading a new file replaces the image", async ({ authedRequest, apiRequest, authedUser }) => {
@@ -175,8 +176,6 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
     const imageRes = await apiRequest.get(updated.imageUrl);
     expect(imageRes.status()).toBe(200);
     expect((await imageRes.body()).length).toBe(pngBuffer().length);
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("requires authentication", async ({ apiRequest, authedRequest, authedUser }) => {
@@ -186,8 +185,6 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
       multipart: { title: "Anonymous edit" },
     });
     expect(res.status()).toBe(401);
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("404s for an artwork that doesn't exist", async ({ authedRequest }) => {
@@ -213,8 +210,6 @@ test.describe("PATCH and DELETE /api/artworks/{artworkId}", () => {
 
     const res = await apiRequest.delete(`/api/artworks/${artwork.id}`);
     expect(res.status()).toBe(401);
-
-    await authedRequest.delete(`/api/artworks/${artwork.id}`);
   });
 
   test("404s deleting an artwork that doesn't exist", async ({ authedRequest }) => {

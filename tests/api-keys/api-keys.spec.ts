@@ -27,8 +27,6 @@ test.describe("API key management", () => {
       expect(k).not.toHaveProperty("key");
       expect(k).not.toHaveProperty("keyHash");
     }
-
-    await authedRequest.delete(`/api/api-keys/${id}`);
   });
 
   test("POST /api/api-keys creates a key and returns the raw value once", async ({ authedRequest }) => {
@@ -45,9 +43,6 @@ test.describe("API key management", () => {
     // the response's two fields actually agree with each other.
     expect(body.keyPrefix).toBe(body.key.slice(0, 10));
     expect(typeof body.createdAt).toBe("string");
-
-    // Clean up so we don't accumulate keys across repeated local runs.
-    await authedRequest.delete(`/api/api-keys/${body.id}`);
   });
 
   test("a newly created key authenticates as the same account that created it", async ({ authedRequest }) => {
@@ -62,8 +57,6 @@ test.describe("API key management", () => {
     // Proves the new key authenticates as the account that created it, not
     // some other identity — the key should see itself in its own key list.
     expect(keys.some((k: { id: string }) => k.id === id)).toBe(true);
-
-    await authedRequest.delete(`/api/api-keys/${id}`);
   });
 
   test("defaults the key name to 'Default' when none is given", async ({ authedRequest }) => {
@@ -72,8 +65,6 @@ test.describe("API key management", () => {
     const body = await res.json();
     expect(body.name).toBe("Default");
     expect(body.keyPrefix).toBe(body.key.slice(0, 10));
-
-    await authedRequest.delete(`/api/api-keys/${body.id}`);
   });
 
   test("DELETE revokes a key so it can no longer authenticate", async ({ authedRequest }) => {
