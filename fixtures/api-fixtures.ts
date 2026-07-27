@@ -18,6 +18,10 @@ type ApiFixtures = {
   /** Request context authenticated as the configured admin. Skips the test if
    * no admin credentials are set. */
   adminRequest: APIRequestContext;
+  /** Builds a logged request context for an arbitrary bearer token — used to
+   * act as a throwaway account the test just created. Contexts made this way
+   * are disposed automatically when the test ends. */
+  contextAs: (token: string, label: string) => Promise<APIRequestContext>;
 };
 
 export const test = base.extend<ApiFixtures>({
@@ -50,6 +54,25 @@ export const test = base.extend<ApiFixtures>({
     });
     await use(withResponseLogging(context, "admin"));
     await context.dispose();
+  },
+
+  contextAs: async ({ playwright }, use) => {
+    const created: APIRequestContext[] = [];
+
+    await use(async (token: string, label: string) => {
+      const context = await playwright.request.newContext({
+        baseURL: env.baseURL,
+        extraHTTPHeaders: { Authorization: `Bearer ${token}` },
+      });
+      created.push(context);
+      return withResponseLogging(context, label);
+    });
+
+    // Disposing the real contexts, not the proxies — the proxy forwards
+    // everything else, but there's no reason to route teardown through it.
+    for (const context of created) {
+      await context.dispose();
+    }
   },
 });
 
