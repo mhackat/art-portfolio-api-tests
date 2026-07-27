@@ -1,6 +1,7 @@
 import { test as base, expect, type APIRequestContext } from "@playwright/test";
 import { env } from "../config/env";
-import { loadAuth, type StoredAuth } from "../utils/auth-storage";
+import { loadAuth, loadAdminAuth, type StoredAuth } from "../utils/auth-storage";
+import { withResponseLogging } from "../utils/api-logging";
 
 type ApiFixtures = {
   /** Unauthenticated request context, same baseURL as everything else. Use
@@ -14,12 +15,15 @@ type ApiFixtures = {
   /** The API_AUTOMATION user's own id/username, for building URLs and
    * asserting ownership without hardcoding them in every spec. */
   authedUser: StoredAuth;
+  /** Request context authenticated as the configured admin. Skips the test if
+   * no admin credentials are set. */
+  adminRequest: APIRequestContext;
 };
 
 export const test = base.extend<ApiFixtures>({
   apiRequest: async ({ playwright }, use) => {
     const context = await playwright.request.newContext({ baseURL: env.baseURL });
-    await use(context);
+    await use(withResponseLogging(context, "anon"));
     await context.dispose();
   },
 
@@ -32,7 +36,19 @@ export const test = base.extend<ApiFixtures>({
       baseURL: env.baseURL,
       extraHTTPHeaders: { Authorization: `Bearer ${authedUser.token}` },
     });
-    await use(context);
+    await use(withResponseLogging(context, "api-automation"));
+    await context.dispose();
+  },
+
+  adminRequest: async ({ playwright }, use) => {
+    test.skip(!env.admin.isConfigured, "ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin tests");
+
+    // Reads the session the setup project captured, so no test logs in itself.
+    const context = await playwright.request.newContext({
+      baseURL: env.baseURL,
+      extraHTTPHeaders: { Authorization: `Bearer ${loadAdminAuth().token}` },
+    });
+    await use(withResponseLogging(context, "admin"));
     await context.dispose();
   },
 });
